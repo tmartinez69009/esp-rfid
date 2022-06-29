@@ -262,6 +262,48 @@ void mqttPublishAccess(time_t accesstime, String const &isknown, String const &t
 	}
 }
 
+void mqttPublishAccess(time_t accesstime, String const &isknown, int types[MAX_NUM_RELAYS], String const &user, String const &uid)
+{
+	DynamicJsonDocument root(512);
+	JsonArray access = root["access"].createNestedArray();
+	// log to MQTT adding cmd command
+	if (config.mqttEvents)
+	{
+		root["cmd"] = "log";
+	}
+
+	if (!config.mqttHA)
+	{
+		root["type"] = "access";
+		root["time"] = accesstime;
+		root["isKnown"] = isknown;
+		for(int i=0; i<MAX_NUM_RELAYS; i++) {
+			access.add(types[i]);
+		}
+		root["username"] = user;
+		root["uid"] = uid;
+		root["hostname"] = config.deviceHostname;
+	}
+	else
+	{
+		root["uid"] = uid;
+		root["username"] = user;
+		for(int i=0; i<MAX_NUM_RELAYS; i++) {
+			access.add(types[i]);
+		}
+		root["time"] = accesstime;
+	}
+
+	if (!config.mqttHA)
+	{
+		mqttPublishEvent(&root);
+	}
+	else
+	{
+		mqttPublishEvent(&root, "/tag");
+	}
+}
+
 void mqttPublishIo(String const &io, String const &state)
 {
 	if (config.mqttHA && config.mqttEnabled && mqttClient.connected())

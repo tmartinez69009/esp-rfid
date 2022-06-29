@@ -42,6 +42,7 @@ var config = {
         "ltype": 0,
         "rpin": 4,
         "rtime": 400,
+        "doorname": "Door",
         "beeperpin" : 255,
         "ledwaitingpin" : 255,
         "openlockpin": 255,
@@ -172,6 +173,7 @@ function listhardware() {
   document.getElementById("pincoderequested").value = config.hardware.pincoderequested;
   document.getElementById("ledwaitingpin").value = config.hardware.ledwaitingpin;
   document.getElementById("beeperpin").value = config.hardware.beeperpin;
+  document.getElementById("doorname").value = config.hardware.doorname;
   if (isOfficialBoard) {
     document.getElementById("readertype").value = 1;
     document.getElementById("wg0pin").value = 5;
@@ -192,14 +194,13 @@ function listhardware() {
     updateRelayForm();
     updateUserModalForm();
 
-
     for (var i = 2; i<=numRelays; i++)
     {
-
       document.getElementById("gpiorly"+i).value = config.hardware["relay"+i].rpin;
       document.getElementById("lockType"+i).value = config.hardware["relay"+i].ltype;
       document.getElementById("typerly"+i).value = config.hardware["relay"+i].rtype;
       document.getElementById("delay"+i).value = config.hardware["relay"+i].rtime;
+      document.getElementById("doorname"+i).value = config.hardware["relay"+i].doorname;
     }  
   }
   handleReader();
@@ -207,7 +208,6 @@ function listhardware() {
 }
 
 function listlog() {
-//  websock.send("{\"command\":\"getlatestlog\", \"page\":" + page + "}");
   websock.send("{\"command\":\"getlatestlog\", \"page\":" + page + ", \"filename\":\"" + theCurrentLogFile +"\"}");
 }
 
@@ -256,6 +256,7 @@ function savehardware() {
   config.hardware.accessdeniedpin = parseInt(document.getElementById("accessdeniedpin").value);
   config.hardware.beeperpin = parseInt(document.getElementById("beeperpin").value);
   config.hardware.ledwaitingpin = parseInt(document.getElementById("ledwaitingpin").value);
+  config.hardware.doorname = document.getElementById("doorname").value;
   config.hardware["numrelays"] = numRelays; 
 
   for (var i = 2; i<=numRelays; i++)
@@ -264,6 +265,7 @@ function savehardware() {
     config.hardware["relay"+i].ltype = document.getElementById("lockType"+i).value;
     config.hardware["relay"+i].rtype = document.getElementById("typerly"+i).value;
     config.hardware["relay"+i].rtime = document.getElementById("delay"+i).value;
+    config.hardware["relay"+i].doorname = document.getElementById("doorname"+i).value;
   }  
   uncommited();
 }
@@ -948,14 +950,6 @@ function twoDigits(value) {
 }
 
 function initFileListTable() {
-//  var newlist = [];
-//  for (var i = 0; i < data.length; i++) {
-//    var dup = JSON.parse(data[i]);
-//    newlist[i] = {};
-//    newlist[i].options = {};
-//    newlist[i].value = {};
-//    newlist[i].value = dup;
-//  }
   jQuery(function($) {
     window.FooTable.init("#spifftable", {
       columns: [{
@@ -1032,11 +1026,8 @@ function initFileListTable() {
               .on("click", this, rollover))
               .appendTo(actions);
             } 
-            
-
 
             return actions;
-              //'<span class="glyphicon glyphicon-chevron-up" aria-hidden="true"></span></a>'
           }
       }
 
@@ -1275,7 +1266,7 @@ function initUserTable() {
           },
           {
             "name": "acctype",
-            "title": "Access Rl1",
+            "title": "Access Door "+config.hardware.rdname,
             "breakpoints": "xs",
             "parser": function(value) {
               if (value === 1) {
@@ -1290,7 +1281,7 @@ function initUserTable() {
           },
           {
             "name": "acctype2",
-            "title": "Access Rl2",
+            "title": "Access Door "+config.hardware.relay2.rdname,
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1306,7 +1297,7 @@ function initUserTable() {
           },
           {
             "name": "acctype3",
-            "title": "Access Rl3",
+            "title": "Access Door "+config.hardware.relay3.rdname,
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1322,7 +1313,7 @@ function initUserTable() {
           },
           {
             "name": "acctype4",
-            "title": "Access Rl4",
+            "title": "Access Door "+config.hardware.relay4.rdname,
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1722,6 +1713,7 @@ function updateRelayForm(){
         str=str.replace ("gpiorly","gpiorly" +i);
         str=str.replace ("lockType","lockType" +i);
         str=str.replace ("typerly","typerly" +i);
+        str=str.replace ("doorname","doorname" +i);
         str=str.replace ("handleLock(1)","handleLock(" +i+")");
         str=str.replace ("testRelay(1)","testRelay(" +i+")");
         str=str.replace ("activateTimeForm","activateTimeForm"+i);
@@ -1752,11 +1744,12 @@ function updateUserModalForm(){
       {
         var accTypeFormClone = accTypeForm.clone(true);
         var cloneObj = accTypeFormClone[0];
-        accTypeFormClone.attr('id', 'useracctype' + i);
+        accTypeFormClone.attr("id", "useracctype" + i);
 
         var str = cloneObj.innerHTML;
-        str=str.replace(/acctype/g,"acctype"+i);
-        str=str.replace("Access Type","Access Relay "+i);
+        str=str.replace(/acctype/g, "acctype"+i);
+        str=str.replace("Access Type Relay 1", "Access Type Relay "+i);
+        str=str.replace ("<option value=\"99\">Admin</option>", "");
         cloneObj.innerHTML=str;
         accParent[0].appendChild(cloneObj);
       }
