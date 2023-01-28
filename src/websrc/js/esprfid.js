@@ -1281,7 +1281,6 @@ function initUserTable() {
             "title": "Valid Since",
             "breakpoints": "xs sm",
             "parser": function(value) {
-              console.log(value)
               var comp = new Date();
               value = Math.floor(value + ((comp.getTimezoneOffset() * 60) * -1));
               var vuepoch = new Date(value * 1000);
@@ -1374,7 +1373,6 @@ function initUserTable() {
           validsince: (new Date($editor.find("#validsince").val()).getTime() / 1000),
           validuntil: (new Date($editor.find("#validuntil").val()).getTime() / 1000)
         };
-      console.log(values.validuntil);
       if (row instanceof window.FooTable.Row) {
         row.delete();
         values.id = uid++;
@@ -1404,13 +1402,11 @@ function initUserTable() {
   });
 
   ft=FooTable.get('#usertable');
-  
 
   for (var i=2; i<= maxNumRelays; i++)
   {
     if (i<= numRelays) 
     {
-      //FooTable.get('#usertable').draw();
       ft.columns.get("acctype"+i).visible=true;
     }
     else
@@ -1473,7 +1469,7 @@ function socketMessageListener(evt) {
           }
           builddata(obj);
           break;
-        case "gettime":
+      case "gettime":
         utcSeconds = obj.epoch;
         timezone = obj.timezone;
         deviceTime();
@@ -1498,8 +1494,6 @@ function socketMessageListener(evt) {
     }
   }
   if (obj.hasOwnProperty("resultof")) {
-
-
     switch (obj.resultof) {
       case "latestlog":
         if (obj.result === false) {
@@ -1559,43 +1553,40 @@ function socketMessageListener(evt) {
           document.getElementById("loading-img").style.display = "none";
         }
         break;
-        case "listfiles":
-          if (page < haspages && obj.result === true) {
-            getnextpage("listfiles");
-          } else if (page === haspages) {
-            initFileListTable();
-            document.getElementById("loading-img").style.display = "none";
-          }
-          break;
-        case "logfileMaintenance":
-          if (obj.result === false) 
+      case "listfiles":
+        if (page < haspages && obj.result === true) {
+          getnextpage("listfiles");
+        } else if (page === haspages) {
+          initFileListTable();
+          document.getElementById("loading-img").style.display = "none";
+        }
+        break;
+      case "logfileMaintenance":
+        if (obj.result === false) 
+        {
+          if (obj.hasOwnProperty("message"))
           {
-            if (obj.hasOwnProperty("message"))
-            {
-              alert (obj.message);
-            } else 
-            {
-              alert ("Operation failed")
-            }
-          } else
+            alert (obj.message);
+          } else 
           {
-            $("#logmaintenance").click();
+            alert ("Operation failed")
           }
-          break;
-        case "userfile":
+        } else
+        {
+          $("#logmaintenance").click();
+        }
+        break;
+      case "userfile":
         if (restorestarted) {
           if (!completed && obj.result === true) {
             restore1by1(slot, recordstorestore, data);
           }
         }
         break;
-
-
       default:
         break;
     }
   }
-
 }
 
 function clearevent() {
