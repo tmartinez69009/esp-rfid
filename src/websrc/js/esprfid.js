@@ -1052,14 +1052,15 @@ function initEventTable() {
     newlist[i] = {};
     newlist[i].options = {};
     newlist[i].value = {};
-    newlist[i].value = dup;
+    var dup = {};
     try {
-      var dup = JSON.parse(data[i]);
+      dup = JSON.parse(data[i]);
       dup.uid = i;
     } catch(e)
     {
-      var dup = {"uid":i,"type":"ERRO","src":"WEBIF","desc":"Error in logfile entry","data":data[i],"time":1}
+      dup = {"uid":i,"type":"ERRO","src":"WEBIF","desc":"Error in logfile entry","data":data[i],"time":1}
     }
+    newlist[i].value = dup;
     var c = dup.type;
     switch (c) {
       case "WARN":
@@ -1164,7 +1165,6 @@ function initLatestLogTable() {
       default:
         break;
     }
-
   }
   jQuery(function($) {
     ft = window.FooTable.init("#latestlogtable", {

@@ -17,14 +17,12 @@ void ICACHE_FLASH_ATTR parseBytes(const char *str, char sep, byte *bytes, int ma
 	}
 }
 
-// This is part of the latest releases of Arduino for ESP8266
-// https://github.com/SensorsIot/NTP-time-for-ESP8266-and-ESP32/
-void trySyncNTPtime(int retrySeconds)
+void trySyncNTPtime(unsigned long retrySeconds)
 {
-	// If time since last sync is less then retry than update using last clock
+	// If time since last sync is less then retrySeconds then update using last clock
 	if (millis() - lastNTPSync < retrySeconds * 1000)
 	{
-		epoch = lastNTPepoch + (int)(millis() - lastNTPSync) / 1000;
+		epoch = lastNTPepoch + (millis() - lastNTPSync) / 1000;
 		return;
 	}
 	
@@ -36,16 +34,12 @@ void trySyncNTPtime(int retrySeconds)
 	if (timeinfo.tm_year <= (2016 - 1900))
 	{
 #if DEBUG
-		Serial.println("[DEBUG] NTP sync failed");
+		Serial.println("[ WARN ] NTP sync failed");
 #endif
 
 		epoch = previousEpoch; // fallback to previous value, so that you can use the manually set time
 		return;
 	}
-
-#if DEBUG
-		Serial.println("[DEBUG] NTP sync success");
-#endif
 	
 	lastNTPepoch = epoch;
 }
