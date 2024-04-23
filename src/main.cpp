@@ -300,7 +300,7 @@ void ICACHE_RAM_ATTR loop()
 	}
 
 	// don't try connecting to WiFi when waiting for pincode
-	if (doEnableWifi == true && keyTimer == 0)
+	if (doEnableWifi == true && keyTimer == 0 && activateRelay[0] == true)
 	{
 		if (!WiFi.isConnected())
 		{
