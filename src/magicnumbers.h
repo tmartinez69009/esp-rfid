@@ -17,7 +17,7 @@
 
 #define ACCESS_GRANTED 1
 #define ACCESS_ADMIN 99
-#define ACCCESS_DENIED 0
+#define ACCESS_DENIED 0
 
 // Reader defines
 

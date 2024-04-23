@@ -1145,21 +1145,12 @@ function initLatestLogTable() {
       var dup = {"uid":0,"acctype":99,"timestamp":0,"username":"Error in logfile entry"}
     }
     newlist[i].value = dup;
-    var c = dup.acctype;
+    var c = dup.access;
     switch (c) {
       case 1:
         newlist[i].options.classes = "success";
         break;
-      case 2:
-        newlist[i].options.classes = "warning";
-        break;
-      case 99:
-        newlist[i].options.classes = "info";
-        break;
       case 0:
-        newlist[i].options.classes = "warning";
-        break;
-      case 98:
         newlist[i].options.classes = "danger";
         break;
       default:
@@ -1198,11 +1189,11 @@ function initLatestLogTable() {
         },
         {
           "name": "acctype",
-          "title": "Access",
+          "title": "Role",
           "breakpoints": "xs sm",
           "parser": function(value) {
             if (value === 1) {
-              return "Granted";
+              return "Always";
             } else if (value === 99) {
               return "Admin";
             } else if (value === 0) {
@@ -1211,6 +1202,20 @@ function initLatestLogTable() {
               return "Unknown";
             } else if (value === 2) {
               return "Expired";
+            }
+          }
+        },
+        {
+          "name": "access",
+          "title": "Access",
+          "breakpoints": "xs sm",
+          "parser": function(value) {
+            if (value === 1) {
+              return "Granted";
+            } else if (value === 0) {
+              return "Denied";
+            } else {
+              return "Unknown";
             }
           }
         }
