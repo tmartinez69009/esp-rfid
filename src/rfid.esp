@@ -438,6 +438,9 @@ void rfidProcess()
 		/*
 		 *  Admin user - enable relay (with no time limits) and wifi
 		 */
+#ifdef DEBUG
+		Serial.println(" has admin access, enable wifi");
+#endif
 		doEnableWifi = true;
 		processingState = validAdmin;
 	} else {
@@ -492,9 +495,6 @@ void rfidOutsideMessaging()
 	if (processingState == validAdmin)
 	{
 		ws.textAll("{\"command\":\"giveAccess\"}");
-#ifdef DEBUG
-		Serial.println(" has admin access, enable wifi");
-#endif
 		if (config.numRelays == 1) {
 			mqttPublishAccess(epoch, "true", "Admin", username, uid);
 		} else {
