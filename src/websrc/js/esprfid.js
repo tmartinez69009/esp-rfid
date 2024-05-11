@@ -3,8 +3,8 @@ var version = "";
 var websock = null;
 var wsUri = "ws://" + window.location.host + "/ws";
 var utcSeconds;
-var timezone;
 var data = [];
+var ft;
 var ajaxobj;
 
 var maxNumRelays=4;
@@ -41,6 +41,7 @@ var config = {
         "ltype": 0,
         "rpin": 4,
         "rtime": 400,
+        "doorname": "Door",
         "beeperpin" : 255,
         "ledwaitingpin" : 255,
         "openlockpin": 255,
@@ -81,7 +82,7 @@ var config = {
     "ntp": {
         "server": "pool.ntp.org",
         "interval": 30,
-        "timezone": 0
+        "tzinfo": ""
     }
 };
 
@@ -98,20 +99,42 @@ var gotInitialData = false;
 var wsConnectionPresent = false;
 
 var esprfidcontent;
+var websocketMessagesToRetry = [];
 
-function browserTime() {
-  var d = new Date(0);
-  var c = new Date();
-  var timestamp = Math.floor((c.getTime() / 1000) + ((c.getTimezoneOffset() * 60) * -1));
-  d.setUTCSeconds(timestamp);
-  document.getElementById("rtc").innerHTML = d.toUTCString().slice(0, -3);
+function sendWebsocket(msg) {
+  websock.send(msg);
+}
+
+function sendWebsocketWithRetry(msg) {
+  websock.send(msg);
+  websocketMessagesToRetry.push({
+    message: msg,
+    timestamp: Date.now()
+  });
+
+  setTimeout(function(){
+    retrySendWebsocket();
+  }, 10000);
+}
+
+function retrySendWebsocket() {
+  if(websocketMessagesToRetry.length > 0) {
+    var now = Date.now();
+    var oldestMessage = websocketMessagesToRetry[0];
+    if(now - oldestMessage.timestamp > 10000) {
+      sendWebsocketWithRetry(oldestMessage.message);
+      websocketMessagesToRetry.shift();
+    }
+
+    setTimeout(function(){
+      retrySendWebsocket();
+    }, 10000);
+  }
 }
 
 function deviceTime() {
-  var t = new Date(0); // The 0 there is the key, which sets the date to the epoch,
-  var devTime = Math.floor(utcSeconds + (config.ntp.timezone * 60 * 60));
-  t.setUTCSeconds(devTime);
-  document.getElementById("utc").innerHTML = t.toUTCString().slice(0, -3);
+  var t = new Date(utcSeconds * 1000); // milliseconds from epoch
+  document.getElementById("device-time").innerHTML = t.toString();
 }
 
 function syncBrowserTime() {
@@ -120,7 +143,7 @@ function syncBrowserTime() {
   var datatosend = {};
   datatosend.command = "settime";
   datatosend.epoch = timestamp;
-  websock.send(JSON.stringify(datatosend));
+  sendWebsocket(JSON.stringify(datatosend));
   $("#ntp").click();
 }
 
@@ -177,6 +200,7 @@ function listhardware() {
   document.getElementById("gpioss").value = config.hardware.sspin;
   document.getElementById("gain").value = config.hardware.rfidgain;
   document.getElementById("gpiorly").value = config.hardware.rpin;
+  document.getElementById("doorname").value = config.hardware.doorname || "";
   document.getElementById("numrlys").value = numRelays;
   updateRelayForm();
   updateUserModalForm();
@@ -186,22 +210,22 @@ function listhardware() {
     document.getElementById("lockType"+i).value = config.hardware["relay"+i].ltype;
     document.getElementById("typerly"+i).value = config.hardware["relay"+i].rtype;
     document.getElementById("delay"+i).value = config.hardware["relay"+i].rtime;
+    document.getElementById("doorname"+i).value = config.hardware["relay"+i].doorname || "";
   }
   handleReader();
   handleLock();
 }
 
 function listlog() {
-  websock.send("{\"command\":\"getlatestlog\", \"page\":" + page + ", \"filename\":\"" + theCurrentLogFile +"\"}");
+  sendWebsocket("{\"command\":\"getlatestlog\", \"page\":" + page + ", \"filename\":\"" + theCurrentLogFile +"\"}");
 }
 
 function listntp() {
-  websock.send("{\"command\":\"gettime\"}");
+  sendWebsocket("{\"command\":\"gettime\"}");
 
   document.getElementById("ntpserver").value = config.ntp.server;
   document.getElementById("intervals").value = config.ntp.interval;
-  document.getElementById("DropDownTimezone").value = config.ntp.timezone;
-  browserTime();
+  document.getElementById("DropDownTimezone").value = config.ntp.tzinfo;
   deviceTime();
 }
 
@@ -243,6 +267,7 @@ function savehardware() {
   config.hardware.accessdeniedpin = parseInt(document.getElementById("accessdeniedpin").value);
   config.hardware.beeperpin = parseInt(document.getElementById("beeperpin").value);
   config.hardware.ledwaitingpin = parseInt(document.getElementById("ledwaitingpin").value);
+  config.hardware.doorname = document.getElementById("doorname").value;
   config.hardware["numrelays"] = numRelays; 
 
   for (var i = 2; i<=numRelays; i++)
@@ -251,6 +276,7 @@ function savehardware() {
     config.hardware["relay"+i].ltype = document.getElementById("lockType"+i).value;
     config.hardware["relay"+i].rtype = document.getElementById("typerly"+i).value;
     config.hardware["relay"+i].rtime = document.getElementById("delay"+i).value;
+    config.hardware["relay"+i].doorname = document.getElementById("doorname"+i).value;
   }  
   uncommited();
 }
@@ -258,7 +284,7 @@ function savehardware() {
 function saventp() {
   config.ntp.server = document.getElementById("ntpserver").value;
   config.ntp.interval = parseInt(document.getElementById("intervals").value);
-  config.ntp.timezone = parseInt(document.getElementById("DropDownTimezone").value);
+  config.ntp.tzinfo = document.getElementById("DropDownTimezone").value;
 
   uncommited();
 }
@@ -435,13 +461,13 @@ function inProgress(callback) {
           });
           break;
         case "commit":
-          websock.send(JSON.stringify(config));
+          sendWebsocket(JSON.stringify(config));
           break;
         case "destroy":
-          websock.send("{\"command\":\"destroy\"}");
+          sendWebsocket("{\"command\":\"destroy\"}");
           break;
         case "restart":
-          websock.send("{\"command\":\"restart\"}");
+          sendWebsocket("{\"command\":\"restart\"}");
           break;
         default:
           break;
@@ -587,7 +613,7 @@ function listmqtt() {
     document.getElementById("mqttautotopic").checked = config.mqtt.autotopic;
     document.getElementById("mqttuser").value = config.mqtt.user;
     document.getElementById("mqttpwd").value = config.mqtt.pswd;
-    document.getElementById("syncrate").value = config.mqtt.syncrate;
+    document.getElementById("syncrate").value = config.mqtt.syncrate || 180;
     if (config.mqtt.mqttlog === 1) {
         $("input[name=\"mqttlog\"][value=\"1\"]").prop("checked", true);
     }
@@ -598,7 +624,7 @@ function listmqtt() {
 }
 
 function getFileList() {
-    websock.send("{\"command\":\"listfiles\", \"page\":" + page + "}");
+    sendWebsocket("{\"command\":\"listfiles\", \"page\":" + page + "}");
 }
 
 function listBSSID() {
@@ -622,7 +648,7 @@ function listSSID(obj) {
 }
 
 function scanWifi() {
-  websock.send("{\"command\":\"scan\"}");
+  sendWebsocket("{\"command\":\"scan\"}");
   document.getElementById("scanb").innerHTML = "...";
   document.getElementById("inputtohide").style.display = "none";
   var node = document.getElementById("ssid");
@@ -633,11 +659,11 @@ function scanWifi() {
 }
 
 function getUsers() {
-  websock.send("{\"command\":\"userlist\", \"page\":" + page + "}");
+  sendWebsocketWithRetry("{\"command\":\"userlist\", \"page\":" + page + "}");
 }
 
 function getEvents() {
-  websock.send("{\"command\":\"geteventlog\", \"page\":" + page + ", \"filename\":\"" + theCurrentLogFile +"\"}");
+  sendWebsocketWithRetry("{\"command\":\"geteventlog\", \"page\":" + page + ", \"filename\":\"" + theCurrentLogFile +"\"}");
 }
 
 function isVisible(e) {
@@ -666,6 +692,8 @@ function getnextpage(mode) {
     document.getElementById("loadpages").innerHTML = "Loading " + page + "/" + haspages;
   }
 
+  // check received previous page
+
   if (page < haspages) {
     page = page + 1;
     var commandtosend = {};
@@ -674,7 +702,9 @@ function getnextpage(mode) {
     if ((mode === "geteventlog") || (mode === "getlatestlog")) { 
       commandtosend.filename = theCurrentLogFile;
     }
-    websock.send(JSON.stringify(commandtosend));
+    sendWebsocketWithRetry(JSON.stringify(commandtosend));
+  } else if (page == haspages) {
+    backupstarted = false;
   }
 }
 
@@ -683,7 +713,7 @@ function builddata(obj) {
 }
 
 function testRelay(xnum) {
-  websock.send("{\"command\":\"testrelay" + xnum + "\"}");
+  sendWebsocket("{\"command\":\"testrelay" + xnum + "\"}");
 }
 
 function colorStatusbar(ref) {
@@ -697,7 +727,15 @@ function colorStatusbar(ref) {
   }
 }
 
+function removeModal() {
+  $("#restoremodal").modal("hide");
+  $("body").removeClass("modal-open");
+  $("body").css("padding-right", "0px");
+  $(".modal-backdrop").remove();
+}
+
 function listStats() {
+  removeModal();
   version = ajaxobj.version;
   document.getElementById("chip").innerHTML = ajaxobj.chipid;
   document.getElementById("cpu").innerHTML = ajaxobj.cpu + " Mhz";
@@ -785,7 +823,7 @@ function backupuser() {
   var commandtosend = {};
   commandtosend.command = "userlist";
   commandtosend.page = page;
-  websock.send(JSON.stringify(commandtosend));
+  sendWebsocketWithRetry(JSON.stringify(commandtosend));
 }
 
 function backupset() {
@@ -836,7 +874,7 @@ function restore1by1(i, len, data) {
   datatosend.acctype = data[i].acctype;
   datatosend.validsince = data[i].validsince;
   datatosend.validuntil = data[i].validuntil;
-  websock.send(JSON.stringify(datatosend));
+  sendWebsocketWithRetry(JSON.stringify(datatosend));
   slot++;
   if (slot === len) {
     document.getElementById("dynamic").className = "progress-bar progress-bar-success";
@@ -845,6 +883,7 @@ function restore1by1(i, len, data) {
     restorestarted = false;
     completed = true;
     slot = 0;
+    recordstorestore = 0;
     document.getElementById("restoreclose").style.display = "block";
   }
 }
@@ -870,6 +909,7 @@ function restoreUser() {
             recordstorestore = json.list.length;
             data = json.list;
             restorestarted = true;
+            completed = false;
             $("#restoremodal").modal({
               backdrop: "static",
               keyboard: false
@@ -891,16 +931,8 @@ function twoDigits(value) {
 }
 
 function initFileListTable() {
-//  var newlist = [];
-//  for (var i = 0; i < data.length; i++) {
-//    var dup = JSON.parse(data[i]);
-//    newlist[i] = {};
-//    newlist[i].options = {};
-//    newlist[i].value = {};
-//    newlist[i].value = dup;
-//  }
   jQuery(function($) {
-    window.FooTable.init("#spifftable", {
+    ft = window.FooTable.init("#spifftable", {
       columns: [{
           "name": "filename",
           "title": "File Name",
@@ -975,11 +1007,8 @@ function initFileListTable() {
               .on("click", this, rollover))
               .appendTo(actions);
             } 
-            
-
 
             return actions;
-              //'<span class="glyphicon glyphicon-chevron-up" aria-hidden="true"></span></a>'
           }
       }
 
@@ -988,11 +1017,11 @@ function initFileListTable() {
     });
     function rollover(e)
     { 
-      websock.send("{\"command\":\"logMaintenance\" , \"action\":\"rollover\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
+      sendWebsocket("{\"command\":\"logMaintenance\" , \"action\":\"rollover\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
     }
     function splitfile(e)
     { 
-      websock.send("{\"command\":\"logMaintenance\" , \"action\":\"split\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
+      sendWebsocket("{\"command\":\"logMaintenance\" , \"action\":\"split\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
     }
     function viewfile(e)
     { 
@@ -1011,12 +1040,10 @@ function initFileListTable() {
     { 
       if (confirm("Really delete " + this.getAttribute('filename') + " ? This can not be undone!"))
       {
-        websock.send("{\"command\":\"logMaintenance\" , \"action\":\"delete\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
+        sendWebsocket("{\"command\":\"logMaintenance\" , \"action\":\"delete\", \"filename\":\"" + this.getAttribute('filename') + "\"}");
       }
     }
   });
-
-
 }
 
 function initEventTable() {
@@ -1025,14 +1052,15 @@ function initEventTable() {
     newlist[i] = {};
     newlist[i].options = {};
     newlist[i].value = {};
-    newlist[i].value = dup;
+    var dup = {};
     try {
-      var dup = JSON.parse(data[i]);
+      dup = JSON.parse(data[i]);
       dup.uid = i;
     } catch(e)
     {
-      var dup = {"uid":i,"type":"ERRO","src":"WEBIF","desc":"Error in logfile entry","data":data[i],"time":1}
+      dup = {"uid":i,"type":"ERRO","src":"WEBIF","desc":"Error in logfile entry","data":data[i],"time":1}
     }
+    newlist[i].value = dup;
     var c = dup.type;
     switch (c) {
       case "WARN":
@@ -1050,7 +1078,7 @@ function initEventTable() {
 
   }
   jQuery(function($) {
-    window.FooTable.init("#eventtable", {
+    ft = window.FooTable.init("#eventtable", {
       columns: [{
           "name": "uid",
           "title": "ID",
@@ -1137,10 +1165,9 @@ function initLatestLogTable() {
       default:
         break;
     }
-
   }
   jQuery(function($) {
-    window.FooTable.init("#latestlogtable", {
+    ft = window.FooTable.init("#latestlogtable", {
       columns: [{
           "name": "timestamp",
           "title": "Date",
@@ -1218,7 +1245,7 @@ function initUserTable() {
           },
           {
             "name": "acctype",
-            "title": "Access Rl1",
+            "title": "Access Door " + config.hardware.doorname || "1",
             "breakpoints": "xs",
             "parser": function(value) {
               if (value === 1) {
@@ -1233,7 +1260,7 @@ function initUserTable() {
           },
           {
             "name": "acctype2",
-            "title": "Access Rl2",
+            "title": "Access Door " + config.hardware.relay2?.doorname || "2",
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1249,7 +1276,7 @@ function initUserTable() {
           },
           {
             "name": "acctype3",
-            "title": "Access Rl3",
+            "title": "Access Door " + config.hardware.relay3?.doorname || "3",
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1265,7 +1292,7 @@ function initUserTable() {
           },
           {
             "name": "acctype4",
-            "title": "Access Rl4",
+            "title": "Access Door " + config.hardware.relay4?.doorname || "4",
             "breakpoints": "xs",
             "visible": false,
             "parser": function(value) {
@@ -1284,10 +1311,14 @@ function initUserTable() {
             "title": "Valid Since",
             "breakpoints": "xs sm",
             "parser": function(value) {
-              console.log(value)
               var comp = new Date();
-              value = Math.floor(value + ((comp.getTimezoneOffset() * 60) * -1));
-              var vuepoch = new Date(value * 1000);
+              var vuepoch;
+              if (value) {
+                value = Math.floor(value + ((comp.getTimezoneOffset() * 60) * -1));
+                vuepoch = new Date(value * 1000);
+              } else {
+                vuepoch = new Date(0);
+              }
               var formatted = vuepoch.getFullYear() +
                 "-" + twoDigits(vuepoch.getMonth() + 1) +
                 "-" + twoDigits(vuepoch.getDate());
@@ -1350,10 +1381,13 @@ function initUserTable() {
             var username = row.value.username;
             if (confirm("This will remove " + uid + " : " + username + " from database. Are you sure?")) {
               var jsontosend = "{\"uid\":\"" + uid + "\",\"command\":\"remove\"}";
-              websock.send(jsontosend);
+              sendWebsocket(jsontosend);
               row.delete();
             }
           }
+        },
+        paging: {
+          size: 10
         },
         components: {
           filtering: window.FooTable.MyFiltering
@@ -1377,7 +1411,6 @@ function initUserTable() {
           validsince: (new Date($editor.find("#validsince").val()).getTime() / 1000),
           validuntil: (new Date($editor.find("#validuntil").val()).getTime() / 1000)
         };
-      console.log(values.validuntil);
       if (row instanceof window.FooTable.Row) {
         row.delete();
         values.id = uid++;
@@ -1401,19 +1434,16 @@ function initUserTable() {
       var validuntil = $editor.find("#validuntil").val();
       var vuepoch = (new Date(validuntil).getTime() / 1000);
       datatosend.validuntil = vuepoch;
-      websock.send(JSON.stringify(datatosend));
+      sendWebsocket(JSON.stringify(datatosend));
       $modal.modal("hide");
     });
   });
 
-  ft=FooTable.get('#usertable');
-  
-
+  ft = FooTable.get('#usertable');
   for (var i=2; i<= maxNumRelays; i++)
   {
     if (i<= numRelays) 
     {
-      //FooTable.get('#usertable').draw();
       ft.columns.get("acctype"+i).visible=true;
     }
     else
@@ -1476,9 +1506,8 @@ function socketMessageListener(evt) {
           }
           builddata(obj);
           break;
-        case "gettime":
+      case "gettime":
         utcSeconds = obj.epoch;
-        timezone = obj.timezone;
         deviceTime();
         break;
       case "piccscan":
@@ -1494,6 +1523,12 @@ function socketMessageListener(evt) {
         if (!('maxOpenDoorTime' in config.hardware)) config.hardware.maxOpenDoorTime = 0;
         if (!('doorbellpin' in config.hardware)) config.hardware.doorbellpin = 255;
         if (!('accessdeniedpin' in config.hardware)) config.hardware.accessdeniedpin = 255;
+        if (!('openlockpin' in config.hardware)) config.hardware.openlockpin = 255;
+        if (!('beeperpin' in config.hardware)) config.hardware.beeperpin = 255;
+        if (!('ledwaitingpin' in config.hardware)) config.hardware.ledwaitingpin = 255;
+        if (!('ltype' in config.hardware)) config.hardware.ltype = 0;
+        if (!('useridstoragemode' in config.hardware)) config.hardware.useridstoragemode = "hexadecimal";
+        if (!('removeparitybits' in config.hardware)) config.hardware.removeparitybits = true;
         if ('numrelays' in config.hardware) numRelays = config.hardware["numrelays"]; else config.hardware["numrelays"] = numRelays;
         break;
       default:
@@ -1501,8 +1536,7 @@ function socketMessageListener(evt) {
     }
   }
   if (obj.hasOwnProperty("resultof")) {
-
-
+    websocketMessagesToRetry.shift();
     switch (obj.resultof) {
       case "latestlog":
         if (obj.result === false) {
@@ -1531,8 +1565,8 @@ function socketMessageListener(evt) {
         }
         break;
       case "eventlist":
-        document.getElementById("saveeventlogbtn").disabled=true; 
-        document.getElementById("cleareventlogbtn").disabled=true; 
+        document.getElementById("saveeventlogbtn").disabled=true;
+        document.getElementById("cleareventlogbtn").disabled=true;
         if (page < haspages && obj.result === true) {
           getnextpage("geteventlog");
         } else if (page === haspages) {
@@ -1540,10 +1574,9 @@ function socketMessageListener(evt) {
           document.getElementById("saveeventlogbtn").disabled=false;
           // only enable delete button for main event log
           // others need to be done from the maintenance section
-          if (theCurrentLogFile === "/eventlog.json")
-          {
-            document.getElementById("cleareventlogbtn").disabled=false; 
-          } 
+          if (theCurrentLogFile === "/eventlog.json") {
+            document.getElementById("cleareventlogbtn").disabled=false;
+          }
           document.getElementById("loading-img").style.display = "none";
         }
         break;
@@ -1562,48 +1595,45 @@ function socketMessageListener(evt) {
           document.getElementById("loading-img").style.display = "none";
         }
         break;
-        case "listfiles":
-          if (page < haspages && obj.result === true) {
-            getnextpage("listfiles");
-          } else if (page === haspages) {
-            initFileListTable();
-            document.getElementById("loading-img").style.display = "none";
-          }
-          break;
-        case "logfileMaintenance":
-          if (obj.result === false) 
+      case "listfiles":
+        if (page < haspages && obj.result === true) {
+          getnextpage("listfiles");
+        } else if (page === haspages) {
+          initFileListTable();
+          document.getElementById("loading-img").style.display = "none";
+        }
+        break;
+      case "logfileMaintenance":
+        if (obj.result === false) 
+        {
+          if (obj.hasOwnProperty("message"))
           {
-            if (obj.hasOwnProperty("message"))
-            {
-              alert (obj.message);
-            } else 
-            {
-              alert ("Operation failed")
-            }
-          } else
+            alert (obj.message);
+          } else 
           {
-            $("#logmaintenance").click();
+            alert ("Operation failed")
           }
-          break;
-        case "userfile":
+        } else
+        {
+          $("#logmaintenance").click();
+        }
+        break;
+      case "userfile":
         if (restorestarted) {
           if (!completed && obj.result === true) {
             restore1by1(slot, recordstorestore, data);
           }
         }
         break;
-
-
       default:
         break;
     }
   }
-
 }
 
 function clearevent() {
   if (confirm('Deleting the Event log file can not be undone - delete ?')) {
-    websock.send("{\"command\":\"clearevent\"}");
+    sendWebsocket("{\"command\":\"clearevent\"}");
     $("#eventlog").click();
   }
 }
@@ -1630,7 +1660,7 @@ function savelatest() {
 
 function clearlatest() {
   if (confirm('Deleting the Access log file can not be undone - delete ?')) {
-    websock.send("{\"command\":\"clearlatest\"}");
+    sendWebsocket("{\"command\":\"clearlatest\"}");
     $("#latestlog").click();
   }
 }
@@ -1648,14 +1678,10 @@ function changeRelayNumber(){
   updateUserModalForm();
 }
 
-function updateRelayForm(){
-  var i;
-  for (i=2; i<= maxNumRelays; i++)
-  {
-
+function updateRelayForm() {
+  for (var i = 2; i <= maxNumRelays; i++) {
     // downstream compatibility
-    if (!(config.hardware.hasOwnProperty("relay"+i))) 
-    {
+    if (!(config.hardware.hasOwnProperty("relay" + i))) {
       var relayJson =
       { 
         "rtype": 1,
@@ -1663,17 +1689,14 @@ function updateRelayForm(){
         "rpin": 4,
         "rtime": 400,
       };
-      config.hardware["relay"+i] = relayJson; 
+      config.hardware["relay" + i] = relayJson; 
     }
-    
 
     var relayForm = $("#relayform");
     var relayparent= $("#relayformparent");
-    if (i<= numRelays) 
-    {
+    if (i<= numRelays) {
       var existingRelayForm = document.getElementById("relayform" + i);
-      if (!(existingRelayForm))
-      {
+      if (!(existingRelayForm)) {
         var relayFormClone = relayForm.clone(true);
         var cloneObj = relayFormClone[0];
         relayFormClone.attr('id', 'relayform' + i);
@@ -1683,6 +1706,7 @@ function updateRelayForm(){
         str=str.replace ("gpiorly","gpiorly" +i);
         str=str.replace ("lockType","lockType" +i);
         str=str.replace ("typerly","typerly" +i);
+        str=str.replace ("doorname","doorname" +i);
         str=str.replace ("handleLock(1)","handleLock(" +i+")");
         str=str.replace ("testRelay(1)","testRelay(" +i+")");
         str=str.replace ("activateTimeForm","activateTimeForm"+i);
@@ -1692,8 +1716,7 @@ function updateRelayForm(){
       handleLock(i);
     } else {
       var removeRelayForm = document.getElementById("relayform" + i);
-      if (removeRelayForm)
-      {
+      if (removeRelayForm) {
         relayparent[0].removeChild(removeRelayForm);
       }
     }
@@ -1701,9 +1724,11 @@ function updateRelayForm(){
 }
 
 function updateUserModalForm(){
-  var i;
-  for (i=2; i<= maxNumRelays; i++)
-  {
+  if(config.hardware.doorname) {
+    $("#useracctype label").text("Access to " + config.hardware.doorname);
+  }
+
+  for (var i=2; i<= maxNumRelays; i++) {
     var accTypeForm = $("#useracctype");
     var accParent= $("#usermodalbody");
     if (i<= numRelays) 
@@ -1713,13 +1738,16 @@ function updateUserModalForm(){
       {
         var accTypeFormClone = accTypeForm.clone(true);
         var cloneObj = accTypeFormClone[0];
-        accTypeFormClone.attr('id', 'useracctype' + i);
+        accTypeFormClone.attr("id", "useracctype" + i);
 
         var str = cloneObj.innerHTML;
-        str=str.replace(/acctype/g,"acctype"+i);
-        str=str.replace("Access Type","Access Relay "+i);
+        str=str.replace(/acctype/g, "acctype"+i);
+        str=str.replace("Access Type Relay 1", "Access Type Relay "+i);
+        str=str.replace ("<option value=\"99\">Admin</option>", "");
         cloneObj.innerHTML=str;
         accParent[0].appendChild(cloneObj);
+        var rname = config.hardware["relay"+i]?.doorname || "Relay "+i;
+        $("#useracctype"+i+" label").text("Access to " + rname);
       }
     } else {
       var removeAccForm = document.getElementById("useracctype" + i);
@@ -1756,7 +1784,7 @@ $("#sidebarCollapse").on("click", function() {
 });
 
 $("#status").click(function() {
-  websock.send("{\"command\":\"status\"}");
+  sendWebsocket("{\"command\":\"status\"}");
   return false;
 });
 
@@ -1814,7 +1842,7 @@ window.FooTable.MyFiltering = window.FooTable.Filtering.extend({
     this._super(instance);
     this.acctypes = ["1", "99", "0"];
     this.acctypesstr = ["Always", "Admin", "Disabled"];
-    this.def = "Access Type";
+    this.def = config.hardware.doorname ? "Access to " + config.hardware.doorname : "Access Type";
     this.$acctype = null;
   },
   $create: function() {
@@ -1924,8 +1952,12 @@ function logout() {
 
 function wsConnectionActive() {
   wsConnectionPresent = true;
-  websock.send("{\"command\":\"status\"}");
   $("#ws-connection-status").slideUp();
+  if (!gotInitialData) {
+    sendWebsocket("{\"command\":\"status\"}");
+    sendWebsocket("{\"command\":\"getconf\"}");
+    gotInitialData = true;
+  }
 }
 
 function wsConnectionClosed() {
@@ -1955,10 +1987,6 @@ function connectWS() {
   websock.addEventListener("message", socketMessageListener);
 
   websock.onopen = function(evt) {
-    if (!gotInitialData) {
-      websock.send("{\"command\":\"getconf\"}");
-      gotInitialData = true;
-    }
     wsConnectionActive();
   };
 

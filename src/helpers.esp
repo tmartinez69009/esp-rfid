@@ -17,27 +17,29 @@ void ICACHE_FLASH_ATTR parseBytes(const char *str, char sep, byte *bytes, int ma
 	}
 }
 
-String ICACHE_FLASH_ATTR generateUid(int type = 0, int length = 12)
+void trySyncNTPtime(unsigned long retrySeconds)
 {
-
-	// nardev: this could be implemented in config, to choose default type of UID;
-
-	String uid;
-	if (type)
+	// If time since last sync is less then retrySeconds then update using last clock
+	if (millis() - lastNTPSync < retrySeconds * 1000)
 	{
-		uid = now();
+		epoch = lastNTPepoch + (millis() - lastNTPSync) / 1000;
+		return;
 	}
-	else
+	
+	time_t previousEpoch = epoch;
+	time(&epoch);
+	lastNTPSync = millis();
+	localtime_r(&epoch, &timeinfo);
+
+	if (timeinfo.tm_year <= (2016 - 1900))
 	{
-		// char *characters = "abcdefghijklmnopqrstuvwxyz0123456789"; small letters, ordered
-		// char *characters = "ABSDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; uppercase, ordered
-		const char *characters = "SN07YXRGP9DBOUVLJK6IEH1FWMT8Q4SA3Z52"; // randomized, uppercase
+#if DEBUG
+		Serial.println("[ WARN ] NTP sync failed");
+#endif
 
-		for (int i = 0; i < length; i++)
-		{
-			uid = uid + characters[random(0, 36)];
-		}
+		epoch = previousEpoch; // fallback to previous value, so that you can use the manually set time
+		return;
 	}
-
-	return uid;
+	
+	lastNTPepoch = epoch;
 }

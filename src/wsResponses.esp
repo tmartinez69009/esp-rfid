@@ -1,12 +1,12 @@
 void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 {
-	DynamicJsonDocument root(4096);
+	DynamicJsonDocument root(2048);
 	root["command"] = "userlist";
 	root["page"] = page;
 	JsonArray users = root.createNestedArray("list");
 	Dir dir = SPIFFS.openDir("/P/");
-	int first = (page - 1) * 15;
-	int last = page * 15;
+	int first = (page - 1) * 10;
+	int last = page * 10;
 	int i = 0;
 	while (dir.next())
 	{
@@ -21,11 +21,15 @@ void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 			std::unique_ptr<char[]> buf(new char[size]);
 			f.readBytes(buf.get(), size);
 			DynamicJsonDocument json(512);
-			auto error = deserializeJson(json, buf.get());
+			auto error = deserializeJson(json, buf.get(), size);
 			if (!error)
 			{
 				String username = json["user"];
-				String pincode = json["pincode"];
+				const char * pincode = "";
+				if(json.containsKey("pincode"))
+				{
+					pincode = json["pincode"];
+				}
 				for (int x = 1; x <= MAX_NUM_RELAYS; x++)
 				{
 					String theKey = String();
@@ -36,7 +40,7 @@ void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 					int AccType = json[theKey];
 					item[theKey] = AccType;
 				}
-				unsigned long validsince = json["validsince"];
+				unsigned long validsince = json.containsKey("validsince") ? json["validsince"] : 0;
 				unsigned long validuntil = json["validuntil"];
 				item["username"] = username;
 				item["validsince"] = validsince;
@@ -45,8 +49,9 @@ void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 			}
 		}
 		i++;
+		yield();
 	}
-	float pages = i / 15.0;
+	float pages = i / 10.0;
 	root["haspages"] = ceil(pages);
 	size_t len = measureJson(root);
 	AsyncWebSocketMessageBuffer *buffer = ws.makeBuffer(len);
@@ -55,8 +60,10 @@ void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 		serializeJson(root, (char *)buffer->get(), len + 1);
 		if (client)
 		{
-			client->text(buffer);
-			client->text("{\"command\":\"result\",\"resultof\":\"userlist\",\"result\": true}");
+			wsMessageTicker.once_ms_scheduled(50, [client, buffer]() {
+				client->text(buffer);
+				client->text("{\"command\":\"result\",\"resultof\":\"userlist\",\"result\": true}");
+			});
 		}
 		else
 		{
@@ -65,7 +72,7 @@ void ICACHE_FLASH_ATTR sendUserList(int page, AsyncWebSocketClient *client)
 	}
 }
 
-void ICACHE_FLASH_ATTR sendStatus()
+void ICACHE_FLASH_ATTR sendStatus(AsyncWebSocketClient *client)
 {
 	struct ip_info info;
 	FSInfo fsinfo;
@@ -75,7 +82,7 @@ void ICACHE_FLASH_ATTR sendStatus()
 		Serial.print(F("[ WARN ] Error getting info on SPIFFS"));
 #endif
 	}
-	DynamicJsonDocument root(1024);
+	DynamicJsonDocument root(512);
 	root["command"] = "status";
 	root["heap"] = ESP.getFreeHeap();
 	root["chipid"] = String(ESP.getChipId(), HEX);
@@ -84,7 +91,7 @@ void ICACHE_FLASH_ATTR sendStatus()
 	root["availsize"] = ESP.getFreeSketchSpace();
 	root["availspiffs"] = fsinfo.totalBytes - fsinfo.usedBytes;
 	root["spiffssize"] = fsinfo.totalBytes;
-	root["uptime"] = NTP.getDeviceUptimeString();
+	root["uptime"] = uptimeSeconds;
 	root["version"] = VERSION;
 
 	if (config.accessPointMode)
@@ -118,7 +125,14 @@ void ICACHE_FLASH_ATTR sendStatus()
 	if (buffer)
 	{
 		serializeJson(root, (char *)buffer->get(), len + 1);
-		ws.textAll(buffer);
+		if (client)
+		{
+			client->text(buffer);
+		}
+		else
+		{
+			ws.textAll(buffer);
+		}
 	}
 }
 
@@ -166,17 +180,23 @@ void ICACHE_FLASH_ATTR printScanResult(int networksFound)
 	WiFi.scanDelete();
 }
 
-void ICACHE_FLASH_ATTR sendTime()
+void ICACHE_FLASH_ATTR sendTime(AsyncWebSocketClient *client)
 {
 	DynamicJsonDocument root(512);
 	root["command"] = "gettime";
-	root["epoch"] = now();
-	root["timezone"] = config.timeZone;
+	root["epoch"] = epoch;
 	size_t len = measureJson(root);
 	AsyncWebSocketMessageBuffer *buffer = ws.makeBuffer(len);
 	if (buffer)
 	{
 		serializeJson(root, (char *)buffer->get(), len + 1);
-		ws.textAll(buffer);
+		if (client)
+		{
+			client->text(buffer);
+		}
+		else
+		{
+			ws.textAll(buffer);
+		}
 	}
 }

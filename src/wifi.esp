@@ -37,10 +37,12 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected &event)
 void onWifiGotIP(const WiFiEventStationModeGotIP &event)
 {
 #ifdef DEBUG
-	Serial.println("[ INFO ] WiFi IP Connected");
+	Serial.print("[ INFO ] WiFi IP Connected: ");
+	Serial.println(WiFi.localIP().toString());
 #endif
 	wifiReconnectTimer.detach();
 	ledWifiOn();
+	connectToMqtt();
 }
 
 bool ICACHE_FLASH_ATTR startAP(IPAddress apip, IPAddress apsubnet, bool hidden, const char *ssid, const char *password = NULL)
@@ -170,9 +172,6 @@ bool ICACHE_FLASH_ATTR connectSTA(const char *ssid, const char *password, byte b
 		String data = ssid;
 		data += " " + WiFi.localIP().toString();
 		writeEvent("INFO", "wifi", "WiFi is connected", data);
-		Serial.println("[ INFO ] Trying to setup NTP Server");
-		NTP.Ntp(config.ntpServer, config.timeZone, config.ntpInterval * 60);
-		connectToMqtt();
 		return true;
 	}
 	else
