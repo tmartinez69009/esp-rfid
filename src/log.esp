@@ -26,12 +26,13 @@ void ICACHE_FLASH_ATTR writeEvent(String type, String src, String desc, String d
 #endif
 }
 
-void ICACHE_FLASH_ATTR writeLatest(String uid, String username, int acctype)
+void ICACHE_FLASH_ATTR writeLatest(String uid, String username, int acctype, int access = ACCESS_GRANTED)
 {
 	DynamicJsonDocument root(512);
 	root["uid"] = uid;
 	root["username"] = username;
 	root["acctype"] = acctype;
+	root["access"] = access;
 	root["timestamp"] = epoch;
 	File latestlog = SPIFFS.open("/latestlog.json", "a");
 	serializeJson(root, latestlog);
