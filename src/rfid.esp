@@ -426,7 +426,7 @@ void rfidProcess()
 		if (validUntilL < nowL || validSinceL > nowL)
 		{
 			processingState = expired;
-		} else if (config.openingHours[weekdayFromMonday(weekday())][hourTz] != '1')
+		} else if (config.openingHours[weekdayFromMonday(weekday(epoch))][hourTz] != '1')
 		{
 			processingState = notValid;
 		} else
@@ -485,6 +485,7 @@ void rfidOutsideMessaging()
 #ifdef DEBUG
 		Serial.println(" has access relay");
 #endif
+		writeLatest(uid, username, accountType, ACCESS_GRANTED);
 		if (config.numRelays == 1) {
 			mqttPublishAccess(epoch, "true", "Always", username, uid);
 		} else {
@@ -495,6 +496,7 @@ void rfidOutsideMessaging()
 	if (processingState == validAdmin)
 	{
 		ws.textAll("{\"command\":\"giveAccess\"}");
+		writeLatest(uid, username, accountType, ACCESS_GRANTED);
 		if (config.numRelays == 1) {
 			mqttPublishAccess(epoch, "true", "Admin", username, uid);
 		} else {
@@ -507,12 +509,14 @@ void rfidOutsideMessaging()
 #ifdef DEBUG
 		Serial.println(" expired");
 #endif
+		writeLatest(uid, username, accountType, ACCESS_DENIED);
 		mqttPublishAccess(epoch, "true", "Expired", username, uid);
 		ledAccessDeniedOn();
 		beeperAccessDenied();
 	}
 	if (processingState == wrongPincode)
 	{
+		writeLatest(uid, username, accountType, ACCESS_DENIED);
 		mqttPublishAccess(epoch, "true", "Wrong pin code", username, uid);
 		ledAccessDeniedOn();
 		beeperAccessDenied();
@@ -522,6 +526,7 @@ void rfidOutsideMessaging()
 #ifdef DEBUG
 		Serial.println(" does not have access");
 #endif
+		writeLatest(uid, username, accountType, ACCESS_DENIED);
 		mqttPublishAccess(epoch, "true", "Disabled", username, uid);
 		ledAccessDeniedOn();
 		beeperAccessDenied();
@@ -530,7 +535,7 @@ void rfidOutsideMessaging()
 	{
 		String data = String(uid) += " " + String(type);
 		writeEvent("WARN", "rfid", "Unknown rfid tag is scanned", data);
-		writeLatest(uid, "Unknown", 98);
+		writeLatest(uid, "Unknown", 98, ACCESS_DENIED);
 		DynamicJsonDocument root(512);
 		root["command"] = "piccscan";
 		root["uid"] = uid;
@@ -548,7 +553,7 @@ void rfidOutsideMessaging()
 		beeperAccessDenied();
 	} else if (uid != "" && processingState != waitingProcessing)
 	{
-		writeLatest(uid, username, accountType);
+		// message to the web UI to tell who has opened the door
 		DynamicJsonDocument root(512);
 		root["command"] = "piccscan";
 		root["uid"] = uid;
